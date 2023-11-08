@@ -20,7 +20,7 @@ contract PuppyRaffle is ERC721, Ownable {
 
     uint256 public immutable entranceFee;
 
-    address[] public players; // change to mapping??
+    address[] public players;
     uint256 public raffleDuration;
     uint256 public raffleStartTime;
     address public previousWinner;
@@ -84,6 +84,7 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @notice duplicate entrants are not allowed
     /// @param newPlayers the list of players to enter the raffle
     function enterRaffle(address[] memory newPlayers) public payable {
+        // <@ if the array becomes too long then new players trying to enter the raffle will not be able to because they will run out of gas becoming of the long loop (DoS)
         require(
             msg.value == entranceFee * newPlayers.length,
             "PuppyRaffle: Must send enough to enter raffle"
@@ -107,6 +108,7 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @param playerIndex the index of the player to refund. You can find it externally by calling `getActivePlayerIndex`
     /// @dev This function will allow there to be blank spots in the array
     function refund(uint256 playerIndex) public {
+        // There is a reentrancy vulnerability here
         address playerAddress = players[playerIndex];
         require(
             playerAddress == msg.sender,
@@ -151,7 +153,7 @@ contract PuppyRaffle is ERC721, Ownable {
             "PuppyRaffle: Raffle not over"
         );
         require(players.length >= 4, "PuppyRaffle: Need at least 4 players");
-        uint256 winnerIndex = uint256(
+        uint256 winnerIndex = uint256( // <@ This hash is not actually random, should use chainlink VRF
             keccak256(
                 abi.encodePacked(msg.sender, block.timestamp, block.difficulty)
             )
@@ -176,7 +178,7 @@ contract PuppyRaffle is ERC721, Ownable {
             tokenIdToRarity[tokenId] = LEGENDARY_RARITY;
         }
 
-        delete players;
+        delete players; // <@ should we delete players or just address(0) the players?
         raffleStartTime = block.timestamp;
         previousWinner = winner;
         (bool success, ) = winner.call{value: prizePool}("");
@@ -186,7 +188,10 @@ contract PuppyRaffle is ERC721, Ownable {
 
     /// @notice this function will withdraw the fees to the feeAddress
     function withdrawFees() external {
-        /* onlyOwner should be able to call function */
+        /*  griefers-send-money-to-contract-to-block-withdrawfees
+            onlyOwner should be able to call function or 
+            remove this function and have the selectWinner() send the fees after sending the prizePool
+        */
         require(
             address(this).balance == uint256(totalFees),
             "PuppyRaffle: There are currently players active!"
@@ -205,6 +210,7 @@ contract PuppyRaffle is ERC721, Ownable {
     }
 
     /// @notice this function will return true if the msg.sender is an active player
+    // This function should be removed because it is not used!
     function _isActivePlayer() internal view returns (bool) {
         for (uint256 i = 0; i < players.length; i++) {
             if (players[i] == msg.sender) {
